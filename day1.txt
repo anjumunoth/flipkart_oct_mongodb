@@ -1,0 +1,431 @@
+Why nosql ???
+-- structured data ; semi structured , unstructured ; 
+-- RDBMS -- rigid schema 
+-- scalability -- horizontal scaling -- built in ; configuration -- simple
+-- cloud -- abstract the complexities, availability; distributed ;pay as u go;  
+-- big data -- huge volume of data
+-- agile methodology 
+-- sharding of data -- breaking up the data and store it in different physical servers -- partitioning of data 
+-- sharding -- built in 
+-- open source
+-- not ACID compliant; non transactional usage
+-- schema less 
+-- Adhere to CAP theorem
+
+
+100 images in mysql -- performance --slow; BLOB; 
+
+Anubha - music, reading,social media
+Bhajan - dance, literature, fitness, travel
+Sourav - cycling, computer gaming, geo politics,music, cricket
+
+table users(id,name, hobbyId); PK - (id,hobbyId) 
+table hobbies(hobbyId, description); PK -(hobbyId)
+
+users(id,name,hobby(json))
+
+
+RDBMS -- vertical scaling -- single server
+scale up -- increase the memory and CPU of a single server
+Adv: consistent data; no need for synchronisation
+Limitations: single source of data; availability is a constraint; cannot increase the capacity beyond the hardware constraints
+
+Nosql -- horizontal scaling -- multiple servers
+scale up -- increase the number of servers
+Adv: cost is low (multiple low cost commodity servers); high availability; 
+Limitations: low consistency; synchronisation of data among the different servers; more redundancy; more memory
+
+IRCTC -- 
+On a normal day -- 5L
+During tatkal timings -- 7-8L
+On the day diwali bookings begin -- 10L
+
+Scale up -- increase the number of servers
+scale down 
+
+
+Normal day -- X users
+Flipkart big billion day sale -- 10X
+After 2 weeks of sale -- X users
+
+Data in flipkart -- images; videos
+
+
+Sharding only
+replication only
+sharding and replication
+
+Mongodb -- sharding(replication mandatory); replication seperately
+
+Different types nosql 
+1. column based -- Cassandra 
+2. document based -- Mongodb ; document (json)
+3. graph based -- edges and relationship
+4. key value based -- Couchbase, redis ; key -- associate the record
+
+
+Cassandra
+101, sara, 1235, India
+102, tara, 1235, USA
+103, lara, 1235, Australia
+104, sheela, 1235, USA
+105, geeta, 1235, India
+
+mySql:
+create table(
+empId,
+empName,
+salary,
+countryOfProject,
+primary key (empId)
+)
+Cassandra : partition key, clustering key --> PK
+create table(
+empId,
+empName,
+salary,
+countryOfProject,
+primary key (countryOfProject,empId)
+);
+
+countryOfProject -- partitioning key(repeating)
+empId -- clustering key(s)
+PK -- countryOfProject, empId(combination -- unique)
+101, sara, 1235, India
+105, geeta, 1235, India
+
+104, sheela, 1235, USA
+102, tara, 1235, USA
+
+103, lara, 1235, Australia
+
+Key value based -- couchbase
+"employee_101" : {empId:101,empName:"sara",salary:5678,countryOfProject:"India"}
+
+Document based -- mongodb
+Record -- document 
+{empId:101,empName:"sara",salary:5678,countryOfProject:"India"}
+
+RDBMS --- mongodb
+Database -- database
+table -- collection
+record -- document
+column-- field
+
+
+use databasename; // create if not existing and switch to the db
+
+create table command -- schema of the table
+mongodb -- schema less ; no create table
+Document -- bson -- binary json --json and some other data types
+insert some record
+
+db.employee.insertOne({"empId":101,"empName":"sara",salary:679})
+
+_id:
+-- Will be auto generated if not provided
+-- Default data type -- objectId -- 12 byte hexa decimal number
+-- Can be provided at the time of insertion
+-- Can it be a number, string, array ObjectId
+-- Uniquely identify the records
+-- Implicitly whenever the collection is created, there is an index which is going to be created on the _id field -- unique index
+-- Cannot be dropped explicitly; but will be dropped when the collection is dropped
+-- Can have a single null value
+
+
+Mongodb :
+No concept of rollback
+
+10000 rec -- insert 
+bulk write
+import 
+
+insertOne() -- cache and not flushed to disk -- system fialure
+
+write -- durability 
+
+checkpoint
+journalling
+
+
+write operation -- cache(memory)
+every 60 sec -- flushed to disk
+interval of 60 sec -- system failure
+journalling -- every sec ; 
+
+write operation -- journal ; write op will be executed in memory
+
+
+read -- check in cache(data and indexes) and if not present check in disk
+cache size -- configurable
+
+mongod
+
+mongod --dbpath "" --nojournal
+
+insert -- deprecated
+db.employee.insert({})
+db.employee.insert([{},{}])
+insertOne , insertMany
+
+3 inserts in a bulk
+insertOne()
+
+Import documents -- json ; csv
+1. Use a tool mongoimport 
+2. Use compass (IDE)
+
+Get multiple docs inside the collection
+1. insertMany -- (always stop on errors)
+2. Bulk() --(always execute even with errors)
+3. mongoimport --(stop on errors or continue with errors)
+
+
+Index in mongodb
+Index on _id : asc order index
+
+use flipkartDb
+
+db.employee.insertOne({"empId":101,"empName":"sara",salary:679})
+
+show dbs
+show collections
+
+db.employee.insertMany([
+{empId:102,empName:"tara",salary:34567},
+{empId:103,empName:"lara",salary:14567},
+{empId:104,empName:"geeta",salary:304567},
+])
+
+db.employee.insertOne(
+{empId:105,empName:"geeta",salary:1134567})
+
+select * from employee;
+db.employee.find()
+
+db.employee.insertOne(
+{empId:106,empName:"veena",salary:134567,_id:106})
+
+db.employee.insertOne(
+{empId:108,empName:"rani",salary:17,_id:106});
+// error -- duplicate index entry error
+
+db.employee.insertOne(
+{empId:108,empName:"rani",salary:1567,_id:null})
+// work only once 
+
+
+db.employee.insertOne({studId:"S1",marks:[10,20,30]})
+
+db.employee.insertOne({custId:"C101",address:{streetNo:101,city:"CHN"}})
+
+db.employee.insertOne(
+{custId:"C102",orders:[
+	{orderId:"O101",amount:789},
+	{orderId:"O102",amount:6789.78,billingAddress:{streetNo:45,city:"BLR"}}]})
+
+
+db.employee.insertMany([
+{empId:111,empName:"ram",salary:134567},
+{empId:112,empName:"veena",salary:134567,_id:106},
+{empId:113,empName:"shyam",salary:134567}
+])
+111-- inserted, 112 --exception; and stop
+
+var bulk = db.items.initializeUnorderedBulkOp();
+bulk.insert( { item: "abc123", defaultQty: 100, status: "A", points: 100,_id:100 } );
+bulk.insert( { item: "ijk123", defaultQty: 200, status: "A", points: 200, _id:100} );
+bulk.insert( { item: "mop123", defaultQty: 0, status: "P", points: 0 } );
+bulk.execute();
+
+db.employee.find();// find all the docs
+
+db.employee.findOne();//find the first doc (acc to insertion order)
+
+select * from employee where empId=101
+db.employee.find({empId:101})
+
+select * from employee where empId>101
+db.employee.find({empId:{$gt:101}})
+
+$gt, $lt, $gte, $lte, $ne, $eq
+
+All the docs are consecutive from 1 to 10
+db.employee.find().skip(3).limit(3);//4,5,6
+db.employee.find().limit(3).skip(3);//4,5,6
+
+Logical operators:
+and, or, not
+select * from employee where empId>105 and salary > 5000
+db.employee.find({
+$and:[
+{empId:{$gt:105}},
+{salary:{$gt:5000}}
+]
+})
+
+
+Or:
+select * from employee where empId>105 or salary > 5000
+db.employee.find({
+$or:[
+{empId:{$gt:105}},
+{salary:{$gt:5000}}
+]
+})
+
+Not: 
+db.employee.insertMany([
+{empId:201,empName:"harry"},
+{empId:202,salary:null}
+])
+
+db.employee.find({salary :{$not:{$eq:5000} }});
+//201 -- Yes; 202 -- Yes
+// first 
+db.employee.find({salary:{$ne:5000}});// 202; 201
+
+/*
+Execution plan:
+let m docs in my collection
+1. Find all the docs which have a salary 5000 (field should exists and =5000); 
+// return n docs
+2. Since the opeartor is ne or not : return m-n docs(other than n docs in the collection)
+
+*/
+
+db.employee.find({salary:{$eq:5000}});// 201,202 -- NO
+
+
+Between
+select * from employee where salary between 5000 and 10000
+db.employee.find({salary :{$gt:5000,$lt:1000}});
+
+select * from employee where salary = null
+db.employee.find({salary :null});
+// 202, 201; docs which have a null value for salary and docs which dont have salary field
+
+BSON structure -- json data types + additional data types
+ObjectId, 
+db.employee.find({salary :10000});// docs which have the salary field and a exact value of 10000
+
+$type
+db.employee.find({salary :{$type:10}});// docs for which the salary exists and value is null
+
+$exists
+db.employee.find({salary:{$exists:false}});// docs for which salary which does not exists
+
+Docs for which salary  not equal to 200 
+db.employee.find({salary:{$ne:200});// nulls ; not existent !=200
+db.employee.find({
+$and:[{salary:{$ne:200}},{salary:{$exists:true}},{salary:{$not:{$type:10}}}]
+})
+
+
+select empId from employee where salary> 1000
+
+db.employee.find({salary :{$gt:1000}},{empId:1})
+
+db.employee.find({salary :{$gt:1000}},{empId:1,_id:0});// _id is special exception
+
+db.employee.find({salary :{$gt:1000}},{empId:0,salary:1});//wrong
+
+db.employee.find({salary :{$gt:1000}},{empId:0});//correct all the fields other than empId
+
+Get all the docs with only the cuisines projected in restaurant collection
+db.restaurant.find({},{cuisine:1,_id:0})
+
+Sort all the docs on basis of salary
+db.employee.find().sort({salary:1})
+db.employee.find().sort({salary:-1})
+
+db.employee.find().sort({salary:1,empName:-1})
+;// Sort on basis of salary asc;
+// wherever the salary is same, sort on basis of empName desc
+
+db.employee.find({empId:{$gt:105}}).sort({salary:1,empName:-1})
+
+sort in asc order:
+non existing field
+null value
+asc order
+
+{"address.zipcode":"10462"}
+
+{"loc.1":{$gt:40}}
+
+{"loc":{$gt:40}};// any of the elements can be greater than 40
+
+docs which have atleast one score > 5
+{"grades.score":{$gt:5}}
+
+
+updateOne, updateMany, update(deprecated)
+
+db.employee.updateOne(filter condition, how to update);// updating 0 or 1 doc
+
+db.employee.updateOne({empId:999},{$set:{salary:1000}});
+matchedCount:0 ; modifiedCount:0
+
+db.employee.updateOne({empId:101},{$set:{salary:1000}});
+matchedCount:1 ; modifiedCount:1
+
+Execute the same command again
+db.employee.updateOne({empId:101},{$set:{salary:1000}});
+matchedCount:1 ; modifiedCount:0
+
+db.employee.updateOne({empId:{$gt:101}},{$set:{salary:1000}});
+matchedCount:1 ; modifiedCount:m; where m can be 0 or 1 depending upon the data
+
+Execute the same command again
+db.employee.updateOne({empId:{$gt:101}},{$set:{salary:1000}});
+matchedCount:1 ; modifiedCount:0;
+
+update: default updateOne
+update : updateMany ; pass 3 parameter
+db.employee.update({empId:{$gt:101}},{$set:{salary:1000}});// updateOne
+db.employee.update({empId:{$gt:101}},{$set:{salary:1000}},{multi:true});// updateMany
+
+db.employee.update({empId:{$gt:101}},{$set:{salary:1000}},{upsert:true});//updateOne
+//check if there is any doc satisfying the search criteria
+if yes, update the first doc matching the criteria
+if no, insert
+
+db.employee.update({empId:999},{$set:{salary:1000}},{upsert:true,multi:true});
+//updateMany
+//check if there is any doc satisfying the search criteria
+if yes, update all the docs matching the search criteria
+if no, insert a single doc with only empId,salary field and _id(auto generate)
+
+db.employee.update({empId:{$gt:999}},{$set:{salary:1000}},{upsert:true,multi:true});
+//updateMany
+//check if there is any doc satisfying the search criteria
+if yes, update all the docs matching the search criteria
+if no, insert a single doc with only salary field and _id(auto generate)
+
+
+
+
+updateMany
+
+
+first matched doc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

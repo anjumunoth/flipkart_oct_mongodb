@@ -1,0 +1,425 @@
+# mongod.conf
+
+# for documentation of all options, see:
+#   http://docs.mongodb.org/manual/reference/configuration-options/
+
+# Where and how to store data.
+storage:
+  dbPath: C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\data1
+  journal:
+    enabled: true
+#  engine:
+#  mmapv1:
+#  wiredTiger:	
+
+# where to write logging data.
+systemLog:
+  destination: file
+  logAppend: true
+  path:  C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\data1\mongod.log
+
+# network interfaces
+net:
+  port: 1001
+  bindIp: 127.0.0.1
+
+
+#processManagement:
+
+#security:
+
+#operationProfiling:
+
+replication:
+  replSetName: rs1
+
+#sharding:
+
+## Enterprise-Only Options:
+
+#auditLog:
+
+#snmp:
+
+
+Replica set - 3 nodes
+
+1001,1002,1003 
+--dbpath data1,data2,data3
+--logpath data1/mongod.log,data2/mongod.log,data3/mongod.log
+Replica set name : rs1
+
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod1.cfg"
+
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod2.cfg"
+
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod3.cfg"
+
+Now connect the shell to one of the above servers
+sudo mongo --port 1001
+
+rs.initiate({
+_id:"rs1",
+members:[
+{_id:0,host:"localhost:1001"},
+{_id:1,host:"localhost:1002"},
+{_id:2,host:"localhost:1003"},
+]
+})
+
+
+rs.add({_id:0,host:"localhost:1001"})
+
+writeconcern: majority
+read preference : primary
+
+4. Zero priority node
+1004, dbpath : data4, setup log path; rs1
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod4.cfg"
+
+Connect to the primary
+sudo mongo --port 1001
+
+rs.add({_id:3,host:"localhost:1004",priority:0})
+
+Oplog : capped collection 
+write intensive app
+
+n1 -- primary
+n2,n3 -- secondaries
+
+n2 -- 1 hour
+n2 comes up ;
+n2 will try to sync with n1's oplog from 1 hour before
+oplog for 1 hour are present in n1 --> n2 has synced(partial)
+
+n3 goes down for 1 day
+n3 comes up
+n3 will try to sync from n1's oplog from 24 hours before ; n1's oplog has got rotated
+n3 -- full sync(
+delete all of its data initially,
+clone the primary's data
+after cloning, if any sync required, do the sync
+change the status from recovering to sec
+)
+
+Oplog  -- special capped collection ; limit on size/count
+oplog can grow beyond its size
+Rotate the docs under 2 condition
+
+
+5. Add an arbiter
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod5.cfg"
+
+Now connect the shell to the primary
+rs.addArb("localhost:1005")
+
+6. Change the configuration of one of the nodes -- higher priority
+
+1002 -- priority-- 1
+
+Connect the shell to the primary
+
+var myConfig=rs.config();
+myConfig.members[1].priority=10
+rs.reconfig(myConfig)
+
+//Trigger an election
+// 1002 will become the primary
+
+Best practice -- odd number of nodes in RS
+
+PSA -- writeconcern- majority (2 nodes)
+primary goes down ;
+sec -- becomes primary;
+reads -- yes
+writes -- fail (2 nodes ; 1 node up and running)
+timeout for write : 60 secs
+driver -- automatic 1 retry for write operation
+ack of failure will be sent
+
+
+Add a hidden node
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod6.cfg"
+Connect to the primary
+rs.add({_id:5,host:"localhost:1006",hidden:true,priority:0})
+
+Add a delayed node
+
+mongod --config "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\replication\mongod7.cfg"
+rs.add({_id:6,host:"localhost:1007",slaveDelay: 300,priority:0})
+
+Connect to the primary
+Make the primary step down -- time (optional) for which it has to stepDown
+rs.stepDown()
+//1001 -- will become the primary
+
+production: odd number of nodes in RS ; minimum 5 members (PSSSS)
+servers -- distributed
+
+Deployment : servers which should become primary -- highest priority
+
+Sharding : Partitioning 
+Breaking up of data and storing in different physical servers
+
+shard servers
+config server
+mongos
+
+
+excel file -- metadata ; which file is in which folder and which filder is which drive
+
+c:, d: -- actual data
+data split up on basis of relevance into different drives and different folders
+
+config server -- hold the metadata
+shard server -- hold the exact data
+One or more shard servers(Each shard server will be replica set) 
+One config server(Replica set)
+
+folders -- collection of files
+c: -- set of folders;folders -- set of files
+shard server -- set of chunks ; chunk -- set of documents
+
+Each shard server will have its own replica set
+All shards together can store the data of a collection
+
+Employee collection -- empId : 1 to 20000
+why sharding:
+write intensive app :
+Replica Set -- PSS
+writes -- Primary ; writes may slow down 
+How to make writes faster
+1. Indexes
+2. shard the data 
+Create 2 shards, 1 config server
+Shard the collection -- shard key (empId)
+
+consecutive docs will be put together in a chunk;
+multiple chunks will be created
+multiple chunks will be evently distributed among the 2 shards
+
+Meta data : config server
+Chunk 1: 1 to 1000
+...
+Chunk 20 : 19000 to 20000
+
+Shard1 : chunk1.. chunk 10
+shard2 : chunk11...chunk 20
+
+client --> directly talk with shards -- NO 
+client --> directly talk with config server -- NO 
+
+mongos -- stateless router; cache of metadata from the config server
+Best practice : Every application server ; install mongos routers
+
+client read query--> mongos --> based on read query will ask for meta info from config server
+--> config server will return the corresponding meta data
+--> mongos with the meta data will contact only the respy shards and ask for the reqd docs
+--> respy shards will return to data to mongos 
+--> mongos will gather all the info and send to client
+
+
+
+
+chunk 1: 1 to 100
+chunk2 : 101 to 1987
+
+configure the chunk size : yes
+number of docs in each chunk -- not fixed
+
+Range based
+docs are split into chunks based on range of values
+chunk size : 64mb
+start the sorted docs and put in a chunk;
+ first chunk is full;
+ start the next chunk;
+ 
+ even distribution of chunks among the shards
+ 
+ 20 chunks; 3 shards
+ shard1 : 6 chunks
+ shard2 : 6 chunks
+ shard3 : 8 chunks
+ 
+ Migration of chunks -- evenly distributed
+ 
+ Distribution of docs into chunk -- based on chunk size
+ distribution of chunk in various shard -- based on number of chunks in each shard
+ 
+ 30 chunks; 7 shards
+ shard1,2,3,4,5 : 4 chunks
+ shard6,7 : 5chunks
+ 
+ 
+ 
+ Insert 1000 docs ; based on range , they will be introduced into their corresponding chunks;
+ -- chunk size > 64mb; chunk will be broken into 2 ;
+ many chunks may get broken into 2;
+ number of chunks in a shard may increase; -- trigger the migration
+ process -- balancer -- do the migrations so that the number of chunks are load balanced among the shards
+ 
+ After insertion
+ shard1 - 12 chunks
+ shard 2,3,4,5 : 4 chunks
+ shard6,7 : 5chunks
+ 
+ Migrations will happen : 38 chunks
+ shard1: 7 chunks (consecutive acc to empId)
+ shard2,3,4,5,6: 5
+ shard7: 6
+ 
+ Manually : Break up a chunk
+ Migration across shards -- automatic process
+ Migration enable / disable 
+ 
+ Sharding :
+ Config server : RS : PSS
+ 2001,2002,2003; cfs1; data1,data2,data3
+ mongod --configsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data1" --port 2001 --replSet cfs1 
+ 
+ mongod --configsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data2" --port 2002 --replSet cfs1 
+ 
+ mongod --configsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data3" --port 2003 --replSet cfs1 
+ 
+ Connect to one of the servers from the shell
+ mongo --port 2001
+ 
+ rs.initiate({
+ _id:"cfs1",
+ members:[
+ {_id:0,host:"localhost:2001"},
+ {_id:1,host:"localhost:2002"},
+ {_id:2,host:"localhost:2003"},
+ ]
+ })
+ 
+ Shard1  : RS : PSS
+ 2004,2005,2006; fs1; data4,data5,data6
+ mongod --shardsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data4" --port 2004 --replSet fs1 
+ 
+ mongod --shardsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data5" --port 2005 --replSet fs1
+ 
+ mongod --shardsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data6" --port 2006 --replSet fs1
+ Connect to one of the servers from the shell
+ mongo --port 2004
+ 
+ rs.initiate({
+ _id:"fs1",
+ members:[
+ {_id:0,host:"localhost:2004"},
+ {_id:1,host:"localhost:2005"},
+ {_id:2,host:"localhost:2006"},
+ ]
+ })
+ 
+ 
+ Shard2  : RS : PSS
+ 2007,2008,2009; fs2; data7,data8,data9
+ mongod --shardsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data7" --port 2007 --replSet fs2 
+ 
+ mongod --shardsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data8" --port 2008 --replSet fs2
+
+ mongod --shardsvr --dbpath "C:\Users\anjum\OneDrive\Desktop\flipkart_mongodb_oct\sharding\data9" --port 2009 --replSet fs2
+ Connect to one of the servers from the shell
+ mongo --port 2007
+ 
+ rs.initiate({
+ _id:"fs2",
+ members:[
+ {_id:0,host:"localhost:2007"},
+ {_id:1,host:"localhost:2008"},
+ {_id:2,host:"localhost:2009"},
+ ]
+ })
+ 
+ 2 Replica set(PSS) -- shardsvr
+ 1 Replica set(PSS) --configsvr
+ 
+ Mongos: Stateless router
+ 
+ mongos --port 3001 --configdb cfs1/localhost:2001
+ 
+ Add the shards to the mongos
+ 
+ Connect to mongos from the shell
+ mongo --port 3001
+ mongos>
+ 
+ sh.addShard("fs1/localhost:2005")
+ sh.addShard("fs2/localhost:2008")
+ 
+ Enable the database for sharding:
+ sh.enableSharding("shardingDb");
+ 
+ sh.shardCollection("shardingDb.zipcode",{state:1});// error
+ 
+ Shard key should always be asc indexed field
+ db.zipcode.createIndex({state:1})
+ sh.shardCollection("shardingDb.zipcode",{state:1});
+ 
+ db.zipcode.createIndex({state:"hashed"})
+ sh.shardCollection("shardingDb.zipcode",{state:"hashed"});
+ 
+ 
+ Selection of shard key
+ 1. shard key cannot be changed ; but can add field to the shard key
+ 2. shard key should be immutable
+ 3. shard key is important for the speed of my queries
+ 
+ Shard key -- pattern of queries
+
+ 
+ On basis of shard key, docs is distributed among the chunks
+ Range based sharding : based on range of values of shard key
+ hash based sharding : shard key -- hashing algo -- based hashed values -- put in different chunks
+ -- even distribution of data
+ -- shard key -- timestamp, ObjectId
+ 
+ If _id -- shard key ; wrong choice
+ major of my filter queries is not on _id
+ 
+ shardkey : _id
+ client -- select * from zipcode where _id="4567"
+ client --> mongos --> ask for meta data from config server --> config server will return the metadata in chunk1 in shard1
+ mongos --> shard1 --> get the data
+ 
+ client -- select * from zipcode where state="AK"
+ client --> mongos --> ask for meta data from config server --> config server will not return the metadata
+ mongos broadcast the query to all the shards-->all the  shards--> will return the docs the mongos --> gather all the data
+ 
+ Manually split chunk
+ sh.splitAt("shardingDb.zipcode",{state:"AK"});
+ Find the chunk which has the state: AK doc ans split that chunk into 2
+ 
+ sh.splitFind("shardingDb.zipcode",{state:"WY"});
+ Split the chunk which has the doc specified in filter criteria into 2 rougly equal halves  
+ 
+ drop the collection and shard the collection again using the new shard key
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+Hash based
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

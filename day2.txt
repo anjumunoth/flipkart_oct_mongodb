@@ -1,0 +1,493 @@
+Capped Collection :
+Collection with a configurable limit 
+	-- on size of the collection
+	-- on number of docs in the collection
+When this limit is reached, rotation of the docs (docs which were inserted first will be removed)
+
+
+Indexes
+-- Retrieve data quickly
+-- References to the data in disk -- range queries -- faster
+-- Avoid table locks and avoid full table scans
+-- Look up tables for searching faster
+-- Based on query pattern - create indexes
+-- Query based on indexed field -- faster
+-- Overhead for a write operation
+-- May make the queries slower(select * from employee where salary between 1 and 1000000 -- 90% of records and traverse the index entries)
+-- Maintanence of index -- additional task
+-- Memory, traverse the index -- read 
+
+Types of indexes
+1.Simple - string,number, object, embedded field,array
+2. Compound index -- index on multiple fields
+3. TTL index -- index on a date field. set a property -- expireAfterSeconds -- 60; After 60 sec of the date field -- delete the entire document.
+expireAfterSeconds -- configurable even after creating the index 
+
+db.runCommand({
+  "collMod": <collName>,
+  "index": {
+    "keyPattern": <keyPattern>,
+    "expireAfterSeconds": <number>
+  }
+})
+
+--Use cases : old data purging; session data, history data, log messages
+After every update to the ttl indexed field -- corresponding index entry will be updated
+inserting a new doc -- a new index entry will be added to the index
+
+write operation -- journal entry, perform the write op;every 60 sec -- flushed to disk; add/ update to the various index(es) -- ack sent to the client
+
+4. Geo spatial index -- index on geo spatial data
+5. Text index -- One collection -- max one text index; very huge index
+apple -- apple in various fields (name, description); weightage; score ;
+
+{productId: "p101",name:"Apple watch",description:"Apple watch5 special edition "}
+{productId:"p102",name:"Samsung watch",description:"Samsung watch, water resistant good battery life"}
+{productId:"p103",name:"Californian apples",description :"An apple a day keeps the doctor away"}
+{productId:"p104",name:"Fitbit",description :"smart watch"}
+
+Create a text index on name(weight :5) and description(weight:2)
+Index entries : Apple, watch, watch5, special,smart edition,Samsung,water, resistant, good, battery, life,day,keeps, doctor, away,Californian
+Search for watch : 3 docs -- order
+p102 -- Score : (1*5)+(1*2)=7
+p101 -- Score : (1*5)+ (0*2)=5
+p104 -- Score : 2
+
+db.products.find({$text:{$search : "WATCH"}})  ;// no docs or 3 docs
+B- tree search
+
+huge index -- retrieval may be slower ; full text search 
+
+Collation rules: string comparison:ignore the case, diacritics -- consider
+db.restaurant.createIndex({cuisine:text,borough:text},{weights:{cuisine:10, borough:5}})
+
+db.restaurant.createIndex({cuisine:text,borough:text});// default weight :1 for each field
+
+db.restaurant.createIndex({cuisine:text,borough:text},{weights:{cuisine:10}});// cuisine:10, borough:1
+
+db.restaurant.createIndex({cuisine:text,"address.street":text},{weights:{cuisine:10, "address.street":5}})
+
+6. wild card index -- text index on all the fields which hold a string value
+
+7. Hashed index -- Field value -- hashing algorithm(default) -- hashed value -- build the index
+-- Even distribution of data
+-- Fields with timestamp, ObjectId
+
+Properties of index
+1. Unique -- _id ; Allow one null; 
+2. Sparse -- Only those docs will be taken for index creation which have that field
+3. Partial -- Only those docs will be taken for index creation which satisfy the partialFilterExpression
+
+
+TTL index and replication:
+Doc Marked for deletion -- delete entry in primary's oplog-- sec will sync -- delete the docs in their respective systems
+
+write op --stored in the disk-- index entry has been created 
+read op for the same data -- index scan -- data exists in a particular place 
+
+
+Index:
+
+Simple
+Always mention asc/ desc order :
+Sort Order has to be mentioned but order doesnt play any role; Traverse in both the directions
+db.collName.createIndex({fieldName: text/1/-1/hashed},{options})
+
+db.restaurant.createIndex({restaurant_id: 1},{name : "restaurant_1",unique:true})
+
+db.restaurant.createIndex({cuisine: 1},{name : "cuisine_1"})
+
+db.restaurant.createIndex({cuisine: -1},{name : "cuisine_-1"})
+
+db.restaurant.createIndex({grades: 1},{name : "grades_1"});// multi key index -- index on an array element
+
+db.restaurant.createIndex({"address.zipcode": 1},{name : "address.zipcode_1"});// embedded field
+
+db.restaurant.createIndex({address: 1},{name : "address_1"});//index on an object
+
+db.restaurant.find({cuisine:"American "});//cuisine_1
+
+db.restaurant.find({}).sort({cuisine:1});//cuisine_1
+
+db.restaurant.find({}).sort({cuisine:-1});//cuisine_1
+
+db.restaurant.find({borough:"Bronx"}).sort({cuisine:1});//cuisine_1 
+1. coll scan --docs for which borough: bronx ; result set from the previous step sorted on basis of cuisine (no index usage)
+2. sort all 3772 docs on basis of cuisine(index cuisine_1); sorted docs -- filtration borough-"Bronx"
+
+Candidate plans for execution : 2
+Winning plan : 1
+Rejected plan : 0 or many
+
+How is winning plan :
+1. faster result
+2. lesser number of resources(lesser number of works)
+3. lesser number of docs to be scanned
+
+
+Multi key index : Index on array
+Each element will be taken up for index creation with no consideration for the position
+When is this index used? An array compared with another array
+db.zipcode.createIndex({loc:1})
+db.zipcode.find({"loc":[42,42]});// yes
+db.zipcode.find({"loc.1":42});// no
+db.zipcode.find({"loc.0":42});// no index usage
+1L docs each has 4 entries -- Index entries : 4L
+Index entries -- scan through M index entries; fetch the data ; filter -- 3 stages ;time associated (x+y+z)
+Scan thro 1L docs; fetching only 1st element; filter
+
+Index on an object
+Entire Object comparisons: use the index
+
+Index on embedded field
+
+1.Can i build 2 different(asc/desc) indexes on the same field -- yes(wastage of memory and resources)
+2. Can i build a desc order simple index on _id -- No
+3. Can i build a unique simple asc index and simple asc index on the same field -- no
+
+2 indexes on cuisine in asc and desc 
+db.restaurant.find().sort({cuisine:-1});// asc order on cuisine
+Hinting an index: desc order on cuisine
+db.restaurant.find().sort({cuisine:-1}).hint({cuisine:-1}).explain();// desc order on cuisine
+
+db.restaurant.find({borough:"Bronx"}).sort({cuisine:-1}).explain();// index on borough
+
+db.restaurant.find({borough:"Bronx"}).sort({cuisine:-1}).hint({cuisine:1}).explain();// index on cuisine; no rejected plan
+
+Sparse index
+db.employee.createIndex({salary:1},{sparse:true})
+
+Partial index :
+db.restaurant.createIndex({cuisine:1},{partialFilterExpression:{cuisine:"American "}})
+Assuming the following is the only index created
+db.restaurant.createIndex({cuisine:1},{partialFilterExpression:{borough:"Bronx"}})
+
+db.restaurant.find({borough:"Bronx"});// partial index -- NO
+db.restaurant.find({cuisine:"Bakery"});// partial index -- No
+db.restaurant.find({
+	$and:[
+  	{borough:"Bronx"},
+    {cuisine:"American "}
+    ]});// partial index -- YES
+
+db.restaurant.find({
+	$and:[
+  	{borough:"Brooklyn"},
+    {cuisine:"American "}
+    ]});//partial index -- NO
+
+
+db.employee.createIndex({salary:1},{partialFilterExpression:{salary:{$gt:5000}}})
+db.employee.find({salary :7000});//yes
+db.employee.find({salary :{$gt:7000}});//yes
+db.employee.find({salary :{$gt:2000}});//no
+db.employee.find({salary :{$gt:2000,$lt:10000}});//no
+db.employee.find({salary :{$lt:7000}});//no
+db.employee.find({salary :2000});//no
+
+Index on state on zipcode 
+select * from zipcode ;//NO
+
+Compound Index:
+db.restaurant.createIndex({cuisine:1,borough:-1})
+-- Order of fields is very important
+-- Sort order of fields is very important
+db.restaurant.find({cuisine:"American "});//Yes
+db.restaurant.find({borough:"Brooklyn"});//NO
+
+db.restaurant.find().sort({cuisine:1});//Yes
+db.restaurant.find().sort({cuisine:-1});//Yes
+db.restaurant.find().sort({borough:1});//No
+db.restaurant.find().sort({borough:-1});//No
+
+db.restaurant.find().sort({cuisine:1,borough:-1});//Yes
+db.restaurant.find().sort({cuisine:-1,borough:1});//Yes
+db.restaurant.find().sort({cuisine:-1,borough:-1});//NO
+db.restaurant.find().sort({cuisine:1,borough:1});//No
+
+B-tree index
+(American Bronx)
+(American Brooklyn)
+Indexes currently - simple (cuisine), simple(borough),compound index(cuisine,borough)
+1. db.restaurant.find({cuisine:"Bakery"});//simple or compound 
+
+compound index -- 3 fields a:1,b:1,c:1
+db.coll.find().sort({a:1,b:1,c:-1});// no
+db.coll.find({a:88,b:{$gt:66},c:{$ne:100}});// yes
+
+Filter : 
+Only based on a
+Only based on a and b
+Only based on a and b and c
+
+First index on cuisine
+Next compound index on cuisine and borough -- for this creation, it has used cuisine index
+
+TTL index:
+
+db.students.insertMany([
+{studId:101,doj:new Date(2022,01,01)},
+{studId:102,doj:new Date()},
+{studId:104,doj:new Date(2022,9,12)},
+{studId:103,doj:new Date(2023,01,01)}
+])
+db.students.createIndex({doj:1},{expireAfterSeconds:300})
+
+db.students.insertMany([
+{studId:105,doj:"hello"},
+{studId:106}
+])
+
+Hashed index : data is of type : timestamp, ObjectId
+db.restaurant.createIndex({restaurant_id:"hashed"})
+
+Compound :
+db.restaurant.createIndex({restaurant_id:"hashed",cuisine:1});//Not possible
+db.restaurant.createIndex({restaurant_id:"hashed"},{unique:true});//Not possible
+
+Replication:
+Create multiple servers which will hold the same copies of data
+Availability
+Consistency
+Replica set -- Set of 1 or more nodes which is going to hold the same set of data
+Single node -- primary
+Other nodes -- secondary nodes
+
+-- Maximum 50 members in a RS
+-- Max 7 voting members in a RS
+Each member -- properties : priority -- positive integer(0 is also included); votes -- 0 or 1
+
+Configure a replica set -- 3 nodes
+Initially 3 nodes -- secondary nodes
+Election will take place 
+One of the eligible secondaries will be voted as primary
+
+Primary 
+-- Default all the reads/ write can be handled by the primary
+-- Votes :
+-- priority : > 0
+
+Secondary member:
+-- Cannot handle the writes
+-- Can handle the reads (configured)
+
+Type of Secondary:
+1. Normal secondary:
+-- Proirity > 0; votes : 0 or 1
+-- will surely sync with the primary
+2. Zero priority secondary
+-- prioity : 0; can never become the primary; will always be only the secondary
+-- will surely sync with the primary
+3. Hidden secondary:
+-- hidden from the client; can never be configured to handle the reads also
+-- priority : 0; can never become the primary
+-- can use for creating reports, background tasks, take backups,
+-- will surely sync with the primary asynchronously
+4. Delayed secondary:
+-- sync with the primary after a delay
+-- priority : 0; can never become the primary
+-- No concept of rollback in mongodb; use for backup
+-- delay timeperiod must be configured
+-- will surely sync with the primary but after the delay
+-- will not handle the reads
+-- delay -- 60*60*24
+-- delayed member is always hidden by default
+
+Arbiter:
+-- Priority :0; votes:1
+-- Can it become the primary -- no
+-- Sync with the primary -- no
+-- Hold any data -- no
+-- Used for breaking a tie during the election process
+
+Synchronisation:
+Default : Reads/writes --> primary
+Each member -- oplog -- capped collection
+
+write op --> primary --> 
+primary perform 2 tasks : a. perform the write op; b. add it as an entry to its oplog
+--> secondaries will asynchronously sync with the primary(copy the primary's oplog(based on the timestamp) to their respective oplog)
+--> secondaries will perform the write on their respective data
+
+Replica set level configuration setting:
+chainingAllowed : true; default configuration
+Secondary can Sync from a fully synced secondary
+
+Primary write op -- t1
+secondary write op -- t2; t2> t1; oplog ({timestamp: primary's timestamp})
+
+Election steps:
+Candidates for the election: priority > 0 and fully synched with primary 
+1. Member who has the highest priority -- primary
+2. If there is a tie in step 1: check if any of the member has been a primary in the past -- primarypreferred -- clear win -- primary
+3. If there is a tie in step 2: eligible secondaries(from step 2 )will call for a election -- majority -- primary
+4. If there is a tie in step 3: check if arbiter is present -- arbiter will vote(from step 3) -- primary
+5. if arbiter is not present -- round robin process of the members from step 3 -- one of the member -- primary 
+
+Max 7 voting members(inclusive of arbiter)
+priority : 0; votes : 0
+priority > 0; votes : 0 or 1
+After 7 voting members already in RS -- adding a node with voting as 1 -- will give an error
+
+election timeout;
+election timeout : 10 seconds -- clear primary; 
+
+When all elections happen:
+1. Initially set up the replica set
+2. Reconfigure the replica set
+3. Add a new node with the highest priority
+4. Whenever the primary goes down/steps down
+
+Heart beat :
+Each and every node send a heart beat to all the other nodes -- to show that they are alive
+Every 2 secs -- heartbeat will be sent
+
+For 10 sec -- if there is no heartbeat from a particular node -- node is down
+
+If a secondary node down -- no problem
+If a primary goes down -- the node(s) with the highest priority and which have fully synched -- call for election
+
+Replica set : 
+Lower priority may call for election -- eligible members: highest priority member will become primary
+
+Replica set : n1(P10), n2(p20), n3(p30)
+Currently n3 -- primary;
+n3 is sending no heartbeat
+n1 has detected that primary is down
+n1 will call for election
+election process will be started:
+eligible members: n1,n2
+step 1: n2 becomes primary because of highest priority among the available nodes
+n2 -- primary
+n3 comes up and fully sync with the latest data
+n3 call for the election -- no
+
+n2 -- goes down ;; n3 -- primary
+or 
+change the configuration of any of the members ; n3 -primary
+
+
+Acknowledgement : when 
+write query:
+write concern : 1,2,3,... majority... m
+m -- Total number of nodes in the replica set
+-- can be set for each query or can be set at connection level
+Replica set -- 7 members ; 1Primary(n1); 6 secondary(n2--- n7)
+
+Scenario 1: 
+writeConcern : 1
+client --> write op --> driver(bcos it is a write query) --> 
+primary --> perform the write on its data; make an entry in its oplog -->
+send the ack to the client --> secondaries(n2.. n6) will sync asynchronously
+
+Scenario 2: 
+writeConcern : 2
+client --> write op --> driver(bcos it is a write query) --> 
+primary --> perform the write on its data; make an entry in its oplog -->
+wait for any of the secondaries to complete the sync--> 2 nodes have completed the write
+send the ack to the client --> secondaries(other 5) will sync asynchronously
+
+Scenario 3: 
+writeConcern : 3
+client --> write op --> driver(bcos it is a write query) --> 
+primary --> perform the write on its data; make an entry in its oplog -->
+wait for any 2 of the secondaries to complete the sync--> 3 nodes have completed the write
+send the ack to the client --> secondaries(other 4) will sync asynchronously
+
+Scenario 4: 
+writeConcern : majority (means 4 )
+client --> write op --> driver(bcos it is a write query) --> 
+primary --> perform the write on its data; make an entry in its oplog -->
+wait for any 3 of the secondaries to complete the sync--> 4 nodes have completed the write
+send the ack to the client --> secondaries(other 3) will sync asynchronously
+
+Scenario 5: 
+writeConcern : all(means 7 )
+client --> write op --> driver(bcos it is a write query) --> 
+primary --> perform the write on its data; make an entry in its oplog -->
+wait for all of the secondaries to complete the sync--> 6 nodes have completed the write
+send the ack to the client 
+
+Best scenario under what circumstances:
+writeConcern : majority -- best scenario; default
+Time : y time;
+consistency: 4/7 nodes have fresh data
+read query : probability of reading stale data : 3/7
+
+writeConcern : 2
+Time : n time;
+consistency: 2/7 nodes have fresh data
+read query : probability of reading stale data : 5/7
+
+writeConcern : 7
+Time : m time;// costly affair
+consistency: 7/7 nodes have fresh data
+read query : probability of reading stale data : 0/7
+Lets say secondary goes down -- writes will fail
+
+m>y>n
+
+insert query with writeconcern : majority
+another client who is trying to read the inserted data -- secondaryPreferred
+Probability of reading fresh data : 4/7; 5/7;6/7;7/7
+Synched sec -- fresh data
+Unsynched sec -- stale data or no data
+
+1. Time :ack sent to the client 
+2. Consistency of data across the 7 members
+
+
+read query:
+read preference: default : primary
+best value : secondaryPreferred
+-- for each query; at the connection level
+1. primary -- reads will only go the primary
+2. primaryPreferred -- if primary is available -- direct the read to primary; if primary unavialable go to the secondaries 
+3. secondary -- reads will only go the secondary
+4. secondaryPreferred -- if any secondary is available -- then go that node; if none of the secondaries are available; go to the primary
+load balancing among the secondaries -- driver
+5. nearest --any node which is nearest(primary or secondary)
+
+RS -- 7 nodes 
+write concern : majority (n/2 +1) where n is number of nodes in RS
+
+
+1. Identify the location of mongod.conf
+2. Create a folder called as replication ; Create 7 sub folders called as data1,... data 7
+
+RS -- 3 nodes (n1(P10),n2,n3)
+n2,n3 -- down
+n1 -- primary -- handle reads/writes
+write query: writeconcern : majority(2); writeConcern:2 ;writes will fail
+read query: readPreference : secondary : reads will fail
+It will still work
+write query : writeConcern :1 -- pass
+read query : readPreference : primary : -- pass
+
+writeConcern: majority 
+Each query -- wait for the secondaries to complete
+RS -- 3 nodes (n1(P10),n2,n3)
+insert with writeConcern:1 --> n1 have completed --> ack sent
+update op with writeConcern:2 --> n1,n3 have completed --> ack 
+sent
+
+writes will fail -- upto 22 secs (10sec -- heartbeat ; 12 -- election)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
